@@ -1,0 +1,32 @@
+export const status = {
+  en: {
+    'pending': 'Pending.',
+    'accepted': 'Accepted.',
+    'declined': 'Declined.',
+    'completed': 'Completed.',
+    'new-request': 'New request.',
+    'request-accepted': 'Request accepted.',
+    'request-declined': 'Request declined.',
+    'customer-location': 'Customer location.',
+    'accept': 'Accept.',
+    'decline': 'Decline.',
+    'close': 'Close.',
+    'completed-requests': 'Completed requests.',
+    'completed-requests-desc': 'View all completed service requests.',
+  },
+  bg: {
+    'pending': 'Чакащ',
+    'accepted': 'Приет',
+    'declined': 'Отказан',
+    'completed': 'Завършен',
+    'new-request': 'Нова заявка',
+    'request-accepted': 'Заявката е приета',
+    'request-declined': 'Заявката е отказана',
+    'customer-location': 'Местоположение на клиента',
+    'accept': 'Приемам',
+    'decline': 'Отказвам',
+    'close': 'Затваряне',
+    'completed-requests': 'Завършени заявки',
+    'completed-requests-desc': 'Вижте всички завършени заявки за услуги'
+  },
+};
