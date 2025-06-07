@@ -8,6 +8,7 @@ import { useRequestSimulation } from './hooks/useRequestSimulation';
 import { useRequestActions } from './hooks/useRequestActions';
 import { usePriceQuoteSnapshot } from '@/hooks/usePriceQuoteSnapshot';
 import { UserHistoryService } from '@/services/userHistoryService';
+import { SimulatedEmployeeBlacklistService } from '@/services/simulatedEmployeeBlacklistService';
 
 export const useServiceRequest = (
   type: ServiceType,
@@ -15,7 +16,7 @@ export const useServiceRequest = (
 ) => {
   const { setOngoingRequest, ongoingRequest, user } = useApp();
   const { validateMessage } = useServiceValidation();
-  const { simulateEmployeeResponse, handleAccept } = useRequestSimulation();
+  const { simulateEmployeeResponse, handleAccept, addEmployeeToBlacklist } = useRequestSimulation();
   const {
     handleCancelRequest: cancelRequest,
     handleContactSupport
@@ -37,7 +38,7 @@ export const useServiceRequest = (
   const [eta, setEta] = useState<string | null>(null);
   const [showWaitingForRevision, setShowWaitingForRevision] = useState(false);
 
-  // NEW: Employee assignment and decline tracking per request
+  // Employee assignment and decline tracking per request
   const [assignedEmployee, setAssignedEmployee] = useState<string>('');
   const [employeeDeclineCount, setEmployeeDeclineCount] = useState<number>(0);
   const [hasReceivedRevision, setHasReceivedRevision] = useState<boolean>(false);
@@ -48,6 +49,7 @@ export const useServiceRequest = (
       setAssignedEmployee('');
       setEmployeeDeclineCount(0);
       setHasReceivedRevision(false);
+      setCurrentEmployeeName('');
     }
   }, [ongoingRequest]);
 
@@ -61,6 +63,7 @@ export const useServiceRequest = (
         }
       }
       if (ongoingRequest.employeeName) {
+        console.log('Setting employee name from ongoing request:', ongoingRequest.employeeName);
         setCurrentEmployeeName(ongoingRequest.employeeName);
         // Set assigned employee if not already set
         if (!assignedEmployee) {
@@ -88,6 +91,7 @@ export const useServiceRequest = (
       setAssignedEmployee('');
       setEmployeeDeclineCount(0);
       setHasReceivedRevision(false);
+      setCurrentEmployeeName('');
       
       const newOngoingRequest = {
         id: requestId,
@@ -115,6 +119,7 @@ export const useServiceRequest = (
         type,
         userLocation,
         async (quote: number) => {
+          console.log('Quote received from employee:', currentEmployeeName, 'Amount:', quote);
           setPriceQuote(quote);
           setOriginalPriceQuote(quote);
           
@@ -122,11 +127,13 @@ export const useServiceRequest = (
           
           setOngoingRequest(prev => {
             if (!prev) return null;
-            return {
+            const updated = {
               ...prev,
               priceQuote: quote,
               employeeName: currentEmployeeName
             };
+            console.log('Updated ongoing request with employee name:', currentEmployeeName);
+            return updated;
           });
           
           setShowRealTimeUpdate(false);
@@ -138,6 +145,7 @@ export const useServiceRequest = (
         setDeclineReason,
         setEmployeeLocation,
         (employeeName: string) => {
+          console.log('Employee assignment callback:', employeeName);
           if (employeeName && employeeName !== 'Unknown') {
             setCurrentEmployeeName(employeeName);
             // Assign employee to this request
@@ -169,6 +177,8 @@ export const useServiceRequest = (
 
   const handleAcceptQuote = useCallback(async () => {
     if (!user || !ongoingRequest || !currentEmployeeName) return;
+    
+    console.log('Accepting quote from employee:', currentEmployeeName);
     
     // Generate employee starting location near user
     const employeeStartLocation = {
@@ -245,12 +255,15 @@ export const useServiceRequest = (
         setAssignedEmployee('');
         setEmployeeDeclineCount(0);
         setHasReceivedRevision(false);
+        setCurrentEmployeeName('');
       }
     );
   }, [user, ongoingRequest, currentEmployeeName, userLocation, setOngoingRequest, handleAccept, priceQuote, type]);
 
   const handleDeclineQuote = useCallback(async (isSecondDecline: boolean = false) => {
-    if (!user || !assignedEmployee) return;
+    if (!user || !assignedEmployee || !ongoingRequest) return;
+    
+    console.log('Declining quote from employee:', assignedEmployee, 'Second decline:', isSecondDecline);
     
     const newDeclineCount = employeeDeclineCount + 1;
     setEmployeeDeclineCount(newDeclineCount);
@@ -274,6 +287,8 @@ export const useServiceRequest = (
         const revisedQuote = Math.max(10, priceQuote - Math.floor(Math.random() * 15) - 5);
         setPriceQuote(revisedQuote);
         
+        console.log('Revised quote from same employee:', assignedEmployee, 'Amount:', revisedQuote);
+        
         setOngoingRequest(prev => prev ? {
           ...prev,
           priceQuote: revisedQuote,
@@ -289,7 +304,11 @@ export const useServiceRequest = (
       }, 2000);
       
     } else {
-      // Second decline OR decline after revision - replace employee
+      // Second decline OR decline after revision - blacklist employee and find new one
+      console.log('Second decline - blacklisting employee:', assignedEmployee);
+      
+      // Add employee to blacklist
+      await addEmployeeToBlacklist(ongoingRequest.id, assignedEmployee);
       
       // Record decline in history
       try {
@@ -315,6 +334,7 @@ export const useServiceRequest = (
       setAssignedEmployee('');
       setEmployeeDeclineCount(0);
       setHasReceivedRevision(false);
+      setCurrentEmployeeName('');
       
       setShowPriceQuote(false);
       setShowRealTimeUpdate(true);
@@ -325,9 +345,9 @@ export const useServiceRequest = (
         description: "Looking for another available employee..."
       });
       
-      // Find new employee (blacklist the previous one)
+      // Find new employee (blacklist will be loaded from database)
       setTimeout(() => {
-        const newRequestId = Date.now().toString();
+        const newRequestId = ongoingRequest.id; // Keep same request ID
         
         simulateEmployeeResponse(
           newRequestId,
@@ -335,6 +355,7 @@ export const useServiceRequest = (
           type,
           userLocation,
           (quote: number) => {
+            console.log('New quote from new employee:', currentEmployeeName, 'Amount:', quote);
             setPriceQuote(quote);
             setOngoingRequest(prev => prev ? {
               ...prev,
@@ -350,6 +371,7 @@ export const useServiceRequest = (
           setDeclineReason,
           setEmployeeLocation,
           (employeeName: string) => {
+            console.log('New employee assignment:', employeeName);
             if (employeeName && employeeName !== 'Unknown') {
               setCurrentEmployeeName(employeeName);
               setAssignedEmployee(employeeName); // Assign new employee
@@ -374,18 +396,23 @@ export const useServiceRequest = (
               });
             }
           },
-          [previousEmployee] // Blacklist previous employee
+          [] // Blacklist will be loaded from database in simulateEmployeeResponse
         );
       }, 2000);
     }
-  }, [user, assignedEmployee, employeeDeclineCount, hasReceivedRevision, priceQuote, setOngoingRequest, type, userLocation, simulateEmployeeResponse, currentEmployeeName]);
+  }, [user, assignedEmployee, employeeDeclineCount, hasReceivedRevision, priceQuote, setOngoingRequest, type, userLocation, simulateEmployeeResponse, currentEmployeeName, ongoingRequest, addEmployeeToBlacklist]);
   
-  const handleCancelRequest = useCallback(() => {
+  const handleCancelRequest = useCallback(async () => {
+    if (ongoingRequest) {
+      // Clear blacklist when request is cancelled
+      await SimulatedEmployeeBlacklistService.clearBlacklistForRequest(ongoingRequest.id);
+    }
     setAssignedEmployee('');
     setEmployeeDeclineCount(0);
     setHasReceivedRevision(false);
+    setCurrentEmployeeName('');
     cancelRequest(setShowPriceQuote);
-  }, [cancelRequest]);
+  }, [cancelRequest, ongoingRequest]);
 
   const showStoredPriceQuote = useCallback(() => {
     if (storedSnapshot) {
