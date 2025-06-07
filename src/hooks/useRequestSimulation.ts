@@ -160,9 +160,9 @@ export const useRequestSimulation = () => {
     return await SimulatedEmployeeBlacklistService.addToBlacklist(requestId, employeeName, user.username);
   }, [user]);
 
-  return useMemo(() => ({
+  return {
     simulateEmployeeResponse,
     handleAccept,
     addEmployeeToBlacklist
-  }), [simulateEmployeeResponse, handleAccept, addEmployeeToBlacklist]);
+  };
 };
